@@ -1,2 +1,2 @@
-# Tagging-with-Tnum
-text exploring practice with tnum
+# Tagging-using-Tnum
+text exploring practice using tnum
