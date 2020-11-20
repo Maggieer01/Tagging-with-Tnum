@@ -1,0 +1,251 @@
+---
+title: "TNUM"
+author: "Maggie Sha"
+date: "2020/11/19"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+devtools::install_github("truenumbers/tnum/tnum")
+library(tnum)
+library(tidyverse)
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(httr)
+library(tidytext)
+library(janeaustenr)
+library(stringr)
+library(tidyr)
+
+
+tnum.authorize(ip="54.158.136.133")
+```
+
+# Word 'Love'
+
+### Data cleaning and organization
+```{r}
+# "love" in sense and sensibility
+num2 <- tnum.query("*sense* has text = REGEXP(\"love\")",max=200)
+textdf <- tnum.objectsToDf(num2)
+# View(textdf)
+
+# str_split(tnum.getAttrFromList(num2[5], "subject"), "[:/]")
+
+# returns chapter number
+# as.numeric(substring(str_split(tnum.getAttrFromList(num2[5], "subject"), "[:/]")[[1]][4], 9))
+
+# apply it in a loop
+for(i in 1:length(num2)){
+  textdf$chap_num[i] <- as.numeric(substring(str_split(tnum.getAttrFromList(num2[i], "subject"), "[:/]")[[1]][4], 9))
+}
+count1 <- textdf %>%  group_by(chap_num) %>% summarise(count = n())
+```
+
+### Plots
+```{r}
+# bar chart
+ggplot(count1,aes(x=chap_num,y=count)) + 
+  geom_bar(stat="identity",fill="cadetblue3") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  geom_smooth(se=F) +
+  ggtitle("counts of 'love' in each chapter of the book 'sense and sensibility'")
+```
+
+Explanation: from the plot above, the distribution of the word 'love' in 'sense and sensibility' follows a 'W' shape.
+             In the early chapter 3 and final chapters 44, 45 and 49, this word is mentioned a lot more than the middle chapters.
+
+             
+             In the beginning of the book, the two daughters Elinor and Marianne in the Dashwood family lead a rich and peaceful life.
+             They both have romantic relationships at that time, so the word 'love' is talked frequently.
+             Edward Ferrars is Elinor's lover, he is a well-educated men from a rich family.
+             However, after Dashwood passed away, all his money was passed to his first son, and the daughters left with a small income.
+             Edward's mother does not support his relationship with Elinor, but Edward insisted. As a result,
+             Edward is driven out of home and he gets no financial support from his family since then.
+             Thus, in the middle plot, both of the characters are poor and they spend most of their time working and supporting themselves.
+             This could be a possible reason that why 'love' is mentioned less frequently.
+             Until in the end, their life become stable so they start to talk about 'love' again.
+             
+             
+             
+
+# Word 'Engage'
+
+### Data cleaning and organization
+```{r}
+addChapt <- function(data,name){
+  data$Chapter <- as.numeric(substring(separate(data, subject, c("Auther_Book","Chapter", "Paragraph","Sentence"),sep = "/")$Chapter, 9))
+  names(data)[names(data) == "Chapter"] <- name
+  return(data)
+}
+
+Engage <- tnum.query("*sense* has * = REGEXP(\"engage\")", max = 200)
+# Returned 1 thru 124 of 124 results
+EngageDf <- tnum.objectsToDf(Engage)
+# View(EngageDf)
+```
+
+
+```{r}
+# Add tags
+
+# tnum.tagByQuery("*sense* has * = REGEXP(\"engage\")", adds=("reference:engage_from_Sense"))
+# list(modifiedCount = 124, tagged = 124, removed = 0)
+Engage2 <- tnum.query("@reference:engage_from_Sense", max = 200)
+# Returned 1 thru 124 of 124 results
+EngageDf2 <- tnum.objectsToDf(Engage2)
+```
+
+
+### Plots
+```{r}
+# Path graph
+graEngage <- tnum.makePhraseGraphFromPathList(tnum.getAttrFromList(Engage2, "subject"))
+tnum.plotGraph(graEngage)
+```
+
+### Sentiment analysis
+```{r}
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+tidy_books <- tidy_books %>%  filter(book == "Sense & Sensibility") 
+jane_austen_sentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = chapter, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)
+ggplot(jane_austen_sentiment, aes(index, sentiment)) +
+  geom_col(show.legend = FALSE, fill = "lightblue", width = 0.8 ) +
+  labs(x = "Chapter", y = "Score", title = "Sentiment") +
+  geom_smooth(se = F)
+```
+
+
+### Bar chats
+```{r}
+# Add chapter
+EngagePlot <- addChapt(EngageDf2,"Chapter")
+# Bar chart by chapter
+EngagePlot2 <- EngagePlot %>% group_by(Chapter) %>% summarize(count = n())
+ggplot(data = EngagePlot2,aes(x = Chapter, y = count)) + 
+  geom_bar(width = 0.8, fill="cadetblue3",stat="identity") + 
+  labs(x = "Chapter", y = "Frequency", title = "Engage") + 
+  geom_smooth(se = F)
+```
+
+From this bar chart, we can find that Engage occurs more frequently during the middle part of this book, and get an increase at the end of the book. Its resealable that at the start of the book, under the pressure of life, Mr Henry's death, looking for a new home, the sisters has less time for their love stories. 
+
+After settled down, they have more time for social, meet and fall in love with their heros and the stories turn to the secret engagement of Willoughby and the Edward's ordered engagement. So the words coming up.  
+And associate with the sentiment plot above, the engagement plots are coming with the pain of heroines, so the sentiment socres for these chapters are pretty low.
+
+
+
+# Word 'marry' or 'marriage'
+### Data cleaning and organization
+```{r}
+# Get all sentences including "marry" or "marriage"
+marry <- tnum.query("*sense* has * = REGEXP(\"marry|marriage\")", max=200)
+textdf1<-tnum.objectsToDf(marry)
+```
+
+
+```{r}
+## Tagging each sentences with reference
+#tnum.tagByQuery("*sense* has text = REGEXP(\"marry|marriage\")", "reference:marry|marriage")
+num2 <- tnum.query("@reference:marry", max = 200)
+textdf2<-tnum.objectsToDf(num2)
+```
+
+### Plot of word "marry/marriage" by chapters
+
+```{r}
+textdf4<- separate(textdf1, col = subject, c("book","chapter","paragraph","sentence"), sep = "/", remove = FALSE)
+textdf4<- separate(textdf4, col = chapter, c("chapter","chapter_n"), sep = "-", remove = FALSE)
+counting<- textdf4 %>% group_by(chapter_n) %>% summarise(count = n())
+counting$chapter_n<- as.numeric(counting$chapter_n)
+counting<-arrange(counting,chapter_n)
+ggplot(counting, aes(x = chapter_n, y = count)) +
+  geom_bar(stat = "identity", fill = "cadetblue3") +
+  geom_smooth(se=F)+
+  labs(x = "Chapter", y = "Number of Marry/Marriage Appeared in the chapter", title = "Appearance of Marry/Marriage in each Chapter")
+```
+
+From the barchart, we can see that "marry/marriage" appear more often in the chapter 6,14,15,17,30-33,37-40,48-50.
+The counting of the word "marry/marriage" in increasingly larger in the last few chapters as the main characters are paving into the marriage.
+
+The first upper flow of the line appears around chapter 30 while the first upper flow of the line for "engage" appears around chapter 20.
+It indicates the topic "engagement" mentions often before the topic "marriage".
+The appearance of the word "marriage" increase with the emotional development to the two extreme sides where the characters get in love or get depart, the words about love, marriage, engage would appear more.
+
+### see the location in book
+```{r}
+picmarry<-tnum.makePhraseGraphFromPathList(textdf1$subject)
+tnum.plotGraph(picmarry,size = 200)
+```
+
+
+# word 'pounds' or 'money' or 'pound'
+
+### Data cleaning and organization
+```{r}
+# Get all sentences including "pounds" or "money" or "pound"
+query_1 <- tnum.query("*sense* has * = REGEXP(\"pounds | money | pound\")", max = 200) 
+df_1 <- tnum.objectsToDf(query_1)
+```
+
+```{r}
+#tnum.tagByQuery("*sense* has * = REGEXP(\"pounds | money | pound\")", 
+#                adds=("reference:Monetary_From_Sense"))
+
+# get the number of tags
+query_2 <- tnum.query("@reference:Monetary_From_Sense", max = 200)
+df_2 <- tnum.objectsToDf(query_2)
+
+df_2 %<>% separate(subject, c("book","chapter", "paragraph", "sentence"), sep = "/")
+df_2 %<>% separate(chapter, c("chapter", "number"), sep = "-")
+df_2$number %<>% as.numeric()
+count <- df_2 %>% group_by(number) %>% summarise(count = n())
+```
+
+### Plot
+```{r}
+ggplot(df_2, aes(x = factor(number))) + geom_bar(aes(fill = factor(number))) +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1),
+          axis.text = element_text(size = 11),
+          axis.title = element_text(size = 13, face = "bold")) +
+    labs(x = "ChapterNumber", y = "frequency") +
+    ggtitle("Monetary Count In Each Chapter") +
+    guides(fill = FALSE)
+ggplot(count, aes(x = number, y = count)) + geom_bar(stat = "identity", fill = "pink") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1),
+        axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "ChapterNumber", y = "Frequency") +
+  geom_smooth(se = FALSE, col = "lightblue", lwd = 0.75) +
+  ggtitle("Monetary Count In Each Chapter")
+```
+
+From the plot, we can see that Chapter 1 and Chapter 2 have the most description about monetary. Money, which refers to Wealth, Social Class, and Greed, probably appears most frequently in the first two chapter. 
+
+Chapter 1 started with seven thousand pounds, which is immediately interested in questions of wealth, property, and inheritance. A woman cannot make their own fortunes and must rely on inheriting or marrying into wealth.
+
+For Chapter2, probably that women actually indulged in sadness and found a joy. She tends to express feelings to the greatest extent, whether it is happiness or sadness. However, even though people are already very rich, they are still too greedy to consider helping others. There also a person who placed his wealth above his love and obligation to his family, because that person quickly changed his mind from giving £3,000 to giving them occasional gifts.
+
+Seems like in chapter 30, they had trouble in 50,000 pounds.
+
+In chapter 33, maybe they have some family issues with those money.
+
+In chapter 38, I would say that woman only wanted to marry someone who would not improve the family fortune.
+
+Probably this marriage was the result of idleness and ignorance, not love. Marianne is overcome by her happiness at this fortuitous turn of events.
